@@ -167,6 +167,23 @@ pre{background:var(--wash);border-radius:14px;padding:14px;overflow-x:auto;
   opacity:0;transition:.28s var(--ease);pointer-events:none;max-width:86%;text-align:center;
   box-shadow:var(--sh-lift)}
 .toast.on{opacity:1;transform:translate(-50%,0)}
+.photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+.thumb{width:76px;height:76px;object-fit:cover;border-radius:13px;background:var(--wash);display:block;
+  box-shadow:0 1px 3px rgba(47,50,57,.09)}
+.thumb.miss{opacity:.35}
+.pshot{position:relative;line-height:0}
+.pshot .x{position:absolute;top:-7px;right:-7px;width:25px;height:25px;border-radius:50%;background:var(--ink);
+  color:#fff;font-size:14px;line-height:1;display:grid;place-items:center;box-shadow:var(--sh)}
+.addphoto{width:76px;height:76px;border-radius:13px;background:var(--wash);color:var(--fuji);font-size:26px;
+  font-weight:400;display:grid;place-items:center;border:1.5px dashed #d7d5ce}
+.upmark{position:absolute;left:5px;bottom:5px;font-size:9.5px;font-weight:700;color:#fff;background:rgba(47,50,57,.72);
+  border-radius:10px;padding:2px 7px;line-height:1.5}
+.viewer{position:fixed;inset:0;z-index:70;background:rgba(20,21,25,.95);display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px;padding:calc(env(safe-area-inset-top) + 14px) 14px calc(14px + env(safe-area-inset-bottom))}
+.viewer.on{display:flex}
+.viewer img{max-width:100%;max-height:78vh;border-radius:14px;object-fit:contain}
+.viewer p{color:#d5d5d8;font-size:13px;margin:0;font-weight:600}
+.viewer .close{background:#fff;color:var(--ink);border-radius:24px;padding:13px 30px;font-size:15px;font-weight:700}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -245,7 +262,7 @@ pre{background:var(--wash);border-radius:14px;padding:14px;overflow-x:auto;
 
     <div class="panel">
       <h3>控えを取る</h3>
-      <p>念のための手動バックアップです。読み込むと、新しい方を残して合体します。</p>
+      <p>念のための手動バックアップです。読み込むと、新しい方を残して合体します。写真は含まれません（文字のみ）。</p>
       <button class="wide" id="exportBtn">ファイルに書き出す</button>
       <label for="importFile" style="display:block;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--hai);margin-top:16px">IMPORT</label>
       <input type="file" id="importFile" accept=".json,application/json">
@@ -257,6 +274,8 @@ pre{background:var(--wash);border-radius:14px;padding:14px;overflow-x:auto;
       <div class="line"><span>メモ</span><span id="nMemo">0</span></div>
       <div class="line"><span>Todo（未完了）</span><span id="nTodo">0</span></div>
       <div class="line"><span>期日切れ</span><span id="nOver">0</span></div>
+      <div class="line"><span>写真</span><span id="nPhoto">0</span></div>
+      <div class="line"><span>写真の送信待ち</span><span id="nPend">0</span></div>
       <div class="line"><span>削除済み</span><span id="nDel">0</span></div>
       <button class="wide" id="purgeBtn">削除済みを完全に消す</button>
     </div>
@@ -291,10 +310,19 @@ pre{background:var(--wash);border-radius:14px;padding:14px;overflow-x:auto;
       <details>
         <summary>ホーム画面のアプリにする</summary>
         <ol>
-          <li>このファイルを <b>iCloud Drive</b> に保存する</li>
-          <li>「ファイル」アプリで長押し →「共有」→「<b>Safari</b>」で開く</li>
-          <li>共有ボタン →「<b>ホーム画面に追加</b>」</li>
-          <li>iPadでも同じ操作をする（ファイルはiCloudで共有済み）</li>
+          <li><b>iPad（Safari）</b>：公開URLを開く → 共有ボタン →「<b>ホーム画面に追加</b>」</li>
+          <li><b>Android（Chrome）</b>：公開URLを開く → 右上の <b>⋮</b> →「<b>ホーム画面に追加</b>」または「アプリをインストール」</li>
+          <li>どちらも、追加したアイコンから開いて同期の4項目を入力する</li>
+        </ol>
+      </details>
+      <details>
+        <summary>写真について</summary>
+        <ol style="list-style:none;padding-left:0">
+          <li>メモの記入画面にある <b>＋</b> から、撮影または選択できます（1件につき8枚まで）。</li>
+          <li>取り込み時に自動で縮小します（原寸 長辺1400px・一覧用 長辺260px）。1枚あたり約0.3MBです。</li>
+          <li>電波がなくても追加でき、「送信待ち」と表示されます。つながると自動で送られます。</li>
+          <li>一覧のサムネイルをタップすると大きく表示します。</li>
+          <li>写真は「ファイルに書き出す」の控えには含まれません（Firebase側にのみ保存されます）。</li>
         </ol>
       </details>
       <details>
@@ -336,11 +364,23 @@ pre{background:var(--wash);border-radius:14px;padding:14px;overflow-x:auto;
       <button type="button" data-add="">なし</button>
     </div>
   </div>
+  <div class="field" id="photoField" hidden>
+    <label>PHOTO</label>
+    <div class="photos" id="sheetPhotos"></div>
+    <input type="file" id="photoInput" accept="image/*" multiple hidden>
+    <p class="hint">写真は自動で縮小して保存します（1枚あたり約0.3MB）。</p>
+  </div>
   <div class="act">
     <button class="go" id="sheetSave">保存</button>
     <button class="del" id="sheetDelete" hidden>削除</button>
     <button class="sub" id="sheetClose">閉じる</button>
   </div>
+</div>
+
+<div class="viewer" id="viewer">
+  <img id="viewerImg" alt="写真">
+  <p id="viewerNote"></p>
+  <button class="close" id="viewerClose">閉じる</button>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -424,34 +464,191 @@ function getToken(){
   if(token&&Date.now()<tokenExp)return Promise.resolve(token);
   return refreshToken();
 }
-function nodeUrl(){
-  return String(cfg.dbUrl).replace(/\/+$/,"")+"/techo/"+cfg.uid+".json";
-}
-function remoteGet(){
+function root(){return String(cfg.dbUrl).replace(/\/+$/,"")+"/techo/"+cfg.uid}
+function docUrl(){return root()+"/doc.json"}
+function legacyUrl(){return root()+".json"}
+function mediaUrl(kind,pid){return root()+"/"+kind+"/"+pid+".json"}
+var needMigrate=false;
+function fetchJson(url){
   return getToken().then(function(t){
-    return fetch(nodeUrl()+"?auth="+encodeURIComponent(t));
+    return fetch(url+"?auth="+encodeURIComponent(t));
   }).then(function(r){
     if(r.status===401||r.status===403)throw{fatal:true,j:{error:{message:"PERMISSION_DENIED"}}};
     if(!r.ok)throw new Error("get "+r.status);
     return r.json();
-  }).then(function(j){
-    if(!j||!j.data)return null;
-    try{var d=JSON.parse(j.data);
-      return {memos:Array.isArray(d.memos)?d.memos:[],todos:Array.isArray(d.todos)?d.todos:[]}}
-    catch(e){return null}
+  });
+}
+function unpack(j){
+  if(!j||!j.data)return null;
+  try{var d=JSON.parse(j.data);
+    return {memos:Array.isArray(d.memos)?d.memos:[],todos:Array.isArray(d.todos)?d.todos:[]}}
+  catch(e){return null}
+}
+function remoteGet(){
+  return fetchJson(docUrl()).then(function(j){
+    var v=unpack(j);
+    if(v)return v;
+    /* 旧形式（/techo/{uid} 直下）からの引き継ぎ */
+    return fetchJson(legacyUrl()).then(function(old){
+      var o=unpack(old);
+      if(o)needMigrate=true;
+      return o;
+    });
   });
 }
 function remotePut(){
   return getToken().then(function(t){
-    return fetch(nodeUrl()+"?auth="+encodeURIComponent(t),{
+    return fetch(docUrl()+"?auth="+encodeURIComponent(t),{
       method:"PUT",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({data:JSON.stringify({memos:db.memos,todos:db.todos}),updatedAt:Date.now()})
+    }).then(function(r){
+      if(r.status===401||r.status===403)throw{fatal:true,j:{error:{message:"PERMISSION_DENIED"}}};
+      if(!r.ok)throw new Error("put "+r.status);
+      if(!needMigrate)return true;
+      needMigrate=false;
+      return Promise.all([
+        fetch(root()+"/data.json?auth="+encodeURIComponent(t),{method:"DELETE"}),
+        fetch(root()+"/updatedAt.json?auth="+encodeURIComponent(t),{method:"DELETE"})
+      ]).then(function(){return true},function(){return true});
     });
-  }).then(function(r){
-    if(r.status===401||r.status===403)throw{fatal:true,j:{error:{message:"PERMISSION_DENIED"}}};
-    if(!r.ok)throw new Error("put "+r.status);
-    return true;
   });
+}
+
+/* ═══════════ 写真 ═══════════
+   端末側は IndexedDB に保管し、Realtime Database へ
+   /techo/{uid}/thumbs/{id}（一覧用）と /photos/{id}（原寸）を置く。 */
+var IDB=null,memMedia={};
+function idb(){
+  if(IDB)return Promise.resolve(IDB);
+  if(!window.indexedDB)return Promise.reject("noidb");
+  return new Promise(function(res,rej){
+    var q=indexedDB.open("techo-media",1);
+    q.onupgradeneeded=function(){q.result.createObjectStore("media",{keyPath:"id"})};
+    q.onsuccess=function(){IDB=q.result;res(IDB)};
+    q.onerror=function(){rej(q.error)};
+  });
+}
+function idbDo(mode,fn){
+  return idb().then(function(d){
+    return new Promise(function(res,rej){
+      var tx=d.transaction("media",mode),r=fn(tx.objectStore("media"));
+      tx.oncomplete=function(){res(r?r.result:null)};
+      tx.onerror=function(){rej(tx.error)};
+    });
+  });
+}
+function mGet(id){
+  return idbDo("readonly",function(st){return st.get(id)}).catch(function(){return memMedia[id]||null});
+}
+function mPut(o){
+  memMedia[o.id]=o;
+  return idbDo("readwrite",function(st){return st.put(o)}).catch(function(){return null});
+}
+function mDel(id){
+  delete memMedia[id];
+  return idbDo("readwrite",function(st){return st["delete"](id)}).catch(function(){return null});
+}
+function mAll(){
+  return idbDo("readonly",function(st){return st.getAll()}).catch(function(){
+    return Object.keys(memMedia).map(function(k){return memMedia[k]});
+  });
+}
+
+/* 撮影・選択した画像を縮小して data URL にする */
+function shrink(file,max,q){
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onload=function(){
+      var img=new Image();
+      img.onload=function(){
+        var s=Math.min(1,max/Math.max(img.width,img.height));
+        var cw=Math.max(1,Math.round(img.width*s)),ch=Math.max(1,Math.round(img.height*s));
+        var cv=document.createElement("canvas");cv.width=cw;cv.height=ch;
+        var cx=cv.getContext("2d");
+        cx.fillStyle="#fff";cx.fillRect(0,0,cw,ch);
+        cx.drawImage(img,0,0,cw,ch);
+        try{res(cv.toDataURL("image/jpeg",q))}catch(e){rej(e)}
+      };
+      img.onerror=function(){rej(new Error("画像を読み込めません"))};
+      img.src=fr.result;
+    };
+    fr.onerror=function(){rej(new Error("ファイルを読み込めません"))};
+    fr.readAsDataURL(file);
+  });
+}
+
+function putMedia(kind,pid,dataUrl){
+  return getToken().then(function(t){
+    return fetch(mediaUrl(kind,pid)+"?auth="+encodeURIComponent(t),{
+      method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(dataUrl)});
+  }).then(function(r){if(!r.ok)throw new Error("mput "+r.status);return true});
+}
+function getMedia(kind,pid){
+  return getToken().then(function(t){
+    return fetch(mediaUrl(kind,pid)+"?auth="+encodeURIComponent(t));
+  }).then(function(r){if(!r.ok)throw new Error("mget "+r.status);return r.json()});
+}
+function dropMedia(pid){
+  return getToken().then(function(t){
+    return Promise.all([
+      fetch(mediaUrl("thumbs",pid)+"?auth="+encodeURIComponent(t),{method:"DELETE"}),
+      fetch(mediaUrl("photos",pid)+"?auth="+encodeURIComponent(t),{method:"DELETE"})]);
+  });
+}
+
+/* 未送信の写真をまとめて送る（電波が戻ったときも実行） */
+var flushing=false;
+function flushMedia(){
+  if(flushing||!cfg||!cfg.refreshToken)return Promise.resolve();
+  flushing=true;
+  return mAll().then(function(all){
+    var chain=Promise.resolve();
+    (all||[]).forEach(function(m){
+      if(m.gone){
+        chain=chain.then(function(){return dropMedia(m.id).then(function(){return mDel(m.id)})});
+      }else if(m.pending){
+        chain=chain.then(function(){
+          return putMedia("thumbs",m.id,m.thumb)
+            .then(function(){return putMedia("photos",m.id,m.full)})
+            .then(function(){m.pending=false;return mPut(m)});
+        });
+      }
+    });
+    return chain;
+  }).then(function(){flushing=false;stats()},function(){flushing=false;stats()});
+}
+
+/* 一覧に並べるサムネイル */
+function thumbEl(pid){
+  var img=document.createElement("img");
+  img.className="thumb";img.alt="写真";
+  mGet(pid).then(function(m){
+    if(m&&m.thumb){img.src=m.thumb;return}
+    return getMedia("thumbs",pid).then(function(d){
+      if(!d){img.classList.add("miss");return}
+      img.src=d;
+      return mPut({id:pid,thumb:d,full:null,pending:false});
+    });
+  }).catch(function(){img.classList.add("miss")});
+  img.addEventListener("click",function(e){e.stopPropagation();openViewer(pid)});
+  return img;
+}
+
+function openViewer(pid){
+  var v=$("viewer"),img=$("viewerImg");
+  img.removeAttribute("src");
+  $("viewerNote").textContent="読み込み中…";
+  v.classList.add("on");
+  mGet(pid).then(function(m){
+    if(m&&m.full){img.src=m.full;$("viewerNote").textContent="";return}
+    return getMedia("photos",pid).then(function(d){
+      if(!d){$("viewerNote").textContent="写真が見つかりません";return}
+      img.src=d;$("viewerNote").textContent="";
+      return mGet(pid).then(function(cur){
+        return mPut({id:pid,thumb:(cur&&cur.thumb)||d,full:d,pending:false});
+      });
+    });
+  }).catch(function(){$("viewerNote").textContent="読み込めませんでした（通信を確認してください）"});
 }
 
 /* 送る（相手の内容と合体してから上書き） */
@@ -466,7 +663,7 @@ function push(){
     return remotePut();
   }).then(function(){
     dirty=false;cfg.lastSync=Date.now();saveCfg();saveLocal();
-    busy=false;setStatus("ok");paint();stats();refreshSyncPanel();
+    busy=false;setStatus("ok");paint();stats();refreshSyncPanel();flushMedia();
   }).catch(function(e){
     busy=false;handleErr(e);
   });
@@ -600,7 +797,7 @@ function blank(a,b){var d=el("div","blank");d.appendChild(txt("b","",a));d.appen
 
 function paintMemos(){
   var q=$("query").value.trim().toLowerCase();
-  var items=live(db.memos).filter(function(m){return !q||(m.text+" "+m.date).toLowerCase().indexOf(q)>-1})
+  var items=live(db.memos).filter(function(m){return !q||(m.text+" "+m.date+((m.photos&&m.photos.length)?" 写真 photo":"")).toLowerCase().indexOf(q)>-1})
     .sort(function(a,b){return a.date!==b.date?(a.date<b.date?1:-1):b.updatedAt-a.updatedAt});
   $("memoNum").textContent=String(items.length).padStart(2,"0");
   var box=$("memoList");box.innerHTML="";
@@ -610,6 +807,11 @@ function paintMemos(){
     top.appendChild(txt("span","date",fmtFull(m.date)));
     c.appendChild(top);
     var p=el("p","text");p.textContent=m.text;c.appendChild(p);
+    if(m.photos&&m.photos.length){
+      var strip=el("div","photos");
+      m.photos.forEach(function(pid){strip.appendChild(thumbEl(pid))});
+      c.appendChild(strip);
+    }
     c.addEventListener("click",function(){openSheet("memo",m)});
     box.appendChild(c);
   });
@@ -686,8 +888,62 @@ $("query").addEventListener("input",paint);
 $("todoFilter").addEventListener("change",paintTodos);
 
 /* ═══════════ 記入用紙 ═══════════ */
+var sheetPhotos=[],sheetAdded=[],sheetRemoved=[];
+
+function renderSheetPhotos(){
+  var box=$("sheetPhotos");box.innerHTML="";
+  sheetPhotos.forEach(function(pid){
+    var w=el("div","pshot");
+    w.appendChild(thumbEl(pid));
+    var x=el("button","x");x.type="button";x.textContent="×";
+    x.setAttribute("aria-label","この写真を外す");
+    x.addEventListener("click",function(ev){
+      ev.stopPropagation();
+      sheetPhotos=sheetPhotos.filter(function(v){return v!==pid});
+      if(sheetAdded.indexOf(pid)>-1){sheetAdded=sheetAdded.filter(function(v){return v!==pid});mDel(pid)}
+      else sheetRemoved.push(pid);
+      renderSheetPhotos();
+    });
+    w.appendChild(x);
+    mGet(pid).then(function(m){
+      if(m&&m.pending){var u=el("span","upmark");u.textContent="送信待ち";w.appendChild(u)}
+    });
+    box.appendChild(w);
+  });
+  var add=el("button","addphoto");add.type="button";add.textContent="＋";
+  add.setAttribute("aria-label","写真を追加");
+  add.addEventListener("click",function(){$("photoInput").click()});
+  box.appendChild(add);
+}
+
+$("photoInput").addEventListener("change",function(ev){
+  var files=Array.prototype.slice.call(ev.target.files||[]);
+  ev.target.value="";
+  if(!files.length)return;
+  if(sheetPhotos.length+files.length>8){toast("1件につき写真は8枚までです");return}
+  toast("写真を取り込んでいます…");
+  var chain=Promise.resolve();
+  files.forEach(function(f){
+    chain=chain.then(function(){
+      if(!/^image\//.test(f.type))throw new Error("画像ではありません");
+      return Promise.all([shrink(f,260,.62),shrink(f,1400,.75)]).then(function(a){
+        var pid=uid();
+        return mPut({id:pid,thumb:a[0],full:a[1],pending:true}).then(function(){
+          sheetPhotos.push(pid);sheetAdded.push(pid);renderSheetPhotos();
+        });
+      });
+    });
+  });
+  chain.then(function(){toast("写真を追加しました。保存すると送信されます")},
+             function(){toast("この写真は取り込めませんでした")});
+});
+
 function openSheet(kind,item){
   editing={kind:kind,id:item?item.id:null};
+  sheetPhotos=(item&&item.photos)?item.photos.slice():[];
+  sheetAdded=[];sheetRemoved=[];
+  $("photoField").hidden=(kind!=="memo");
+  if(kind==="memo")renderSheetPhotos();
   $("sheetTitle").textContent=(kind==="memo"?"メモ":"Todo")+(item?"を直す":"を書く");
   $("fDate").value=item?item.date:today();
   $("fText").value=item?item.text:"";
@@ -698,14 +954,16 @@ function openSheet(kind,item){
   $("scrim").classList.add("on");$("sheet").classList.add("on");
   setTimeout(function(){$("fText").focus()},380);
 }
-function closeSheet(){
+function closeSheet(discard){
+  if(discard!==false)sheetAdded.forEach(function(pid){mDel(pid)});
+  sheetPhotos=[];sheetAdded=[];sheetRemoved=[];
   $("scrim").classList.remove("on");$("sheet").classList.remove("on");
   editing=null;if(document.activeElement)document.activeElement.blur();
 }
 $("fab").addEventListener("click",function(){openSheet(tab==="todo"?"todo":"memo",null)});
-$("scrim").addEventListener("click",closeSheet);
-$("sheetClose").addEventListener("click",closeSheet);
-document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet()});
+$("scrim").addEventListener("click",function(){closeSheet(true)});
+$("sheetClose").addEventListener("click",function(){closeSheet(true)});
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet(true)});
 Array.prototype.forEach.call(document.querySelectorAll(".quick button"),function(b){
   b.addEventListener("click",function(){var v=b.getAttribute("data-add");$("fDue").value=(v==="")?"":plus(+v)});
 });
@@ -722,17 +980,39 @@ $("sheetSave").addEventListener("click",function(){
   }else{
     var n={id:uid(),date:date,text:text,updatedAt:Date.now()};
     if(editing.kind==="todo"){n.due=$("fDue").value||"";n.done=false}
+    else n.photos=sheetPhotos.slice();
     list.push(n);toast("保存しました");
   }
-  save();closeSheet();paint();stats();
+  if(editing.kind==="memo"){
+    if(editing.id){
+      var t2=list.filter(function(x){return x.id===editing.id})[0];
+      if(t2)t2.photos=sheetPhotos.slice();
+    }
+    sheetRemoved.forEach(function(pid){
+      mGet(pid).then(function(m){
+        if(m&&m.pending)return mDel(pid);
+        return mPut({id:pid,thumb:null,full:null,gone:true});
+      });
+    });
+  }
+  save();closeSheet(false);paint();stats();flushMedia();
 });
 $("sheetDelete").addEventListener("click",function(){
   if(!editing||!editing.id)return;
   if(!confirm("削除しますか？"))return;
   var list=editing.kind==="memo"?db.memos:db.todos;
   var o=list.filter(function(x){return x.id===editing.id})[0];
-  if(o){o.deleted=true;o.updatedAt=Date.now()}
-  save();closeSheet();paint();stats();toast("削除しました");
+  if(o){
+    o.deleted=true;o.updatedAt=Date.now();
+    (o.photos||[]).forEach(function(pid){
+      mGet(pid).then(function(m){
+        if(m&&m.pending)return mDel(pid);
+        return mPut({id:pid,thumb:null,full:null,gone:true});
+      });
+    });
+    o.photos=[];
+  }
+  save();closeSheet(false);paint();stats();flushMedia();toast("削除しました");
 });
 
 /* ═══════════ 控え ═══════════ */
@@ -778,21 +1058,35 @@ function stats(){
   $("nTodo").textContent=live(db.todos).filter(function(t){return !t.done}).length+" / "+live(db.todos).length+" 件";
   $("nOver").textContent=live(db.todos).filter(function(t){return !t.done&&t.due&&diff(t.due)<0}).length+" 件";
   $("nDel").textContent=(db.memos.filter(function(x){return x.deleted}).length+db.todos.filter(function(x){return x.deleted}).length)+" 件";
+  var shots=0;
+  live(db.memos).forEach(function(m){shots+=(m.photos||[]).length});
+  $("nPhoto").textContent=shots+" 枚";
+  mAll().then(function(all){
+    var p=(all||[]).filter(function(x){return x.pending||x.gone}).length;
+    $("nPend").textContent=p+" 枚";
+  });
   badge();
 }
 
 /* ═══════════ 自動同期の見張り ═══════════ */
 document.addEventListener("visibilitychange",function(){if(!document.hidden)pull(true)});
 window.addEventListener("focus",function(){pull(true)});
-window.addEventListener("online",function(){dirty?push():pull(true)});
+window.addEventListener("online",function(){dirty?push():pull(true);flushMedia()});
 setInterval(function(){if(!document.hidden)pull(true)},15000);
+
+$("viewerClose").addEventListener("click",function(){
+  $("viewer").classList.remove("on");$("viewerImg").removeAttribute("src");
+});
+$("viewer").addEventListener("click",function(e){
+  if(e.target===$("viewer")){$("viewer").classList.remove("on");$("viewerImg").removeAttribute("src")}
+});
 
 /* ═══════════ 起動 ═══════════ */
 $("stampDate").textContent=fmtFull(today());
 loadLocal();
 setStatus(cfg&&cfg.refreshToken?"busy":"local");
 refreshSyncPanel();paint();stats();
-if(cfg&&cfg.refreshToken)pull(true);
+if(cfg&&cfg.refreshToken){pull(true);flushMedia()}
 if(!canLocal)toast("この画面では保存できません。ファイルを端末に保存してSafariで開いてください");
 })();
 </script>
